@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>RED ☎️</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- <link rel="stylesheet" href="style.css" charset="utf-8" /> -->
+  </head>
+  <body>
+    <style>
+      #outgoing {
+        width: 600px;
+        word-wrap: break-word;
+        white-space: normal;
+      }
+    </style>
+    <label for="pubkeytocall">node pubkey to call</label>
+    <input type="text" name="pubkeytocall" id="pubkeytocall"/>
+    <button id="callnode">call node</button>
+    <form>
+      <textarea id="incoming"></textarea>
+      <button type="submit">submit</button>
+    </form>
+    <pre id="outgoing"></pre>
+    <script src="simplepeer.min.js"></script>
+    <script type="text/javascript" src="jquery.min.js"></script>
+    <script>
+      let signaldata
+      const p = new SimplePeer({
+        initiator: location.hash === '#1',
+        trickle: false
+      })
+
+      p.on('error', err => console.log('error', err))
+
+      p.on('signal', data => {
+        console.log('SIGNAL', JSON.stringify(data))
+        document.querySelector('#outgoing').textContent = JSON.stringify(data)
+        signaldata = data
+      })
+
+      document.querySelector('form').addEventListener('submit', ev => {
+        ev.preventDefault()
+        p.signal(JSON.parse(document.querySelector('#incoming').value))
+      })
+
+      p.on('connect', () => {
+        console.log('CONNECT, sending stuff')
+        p.send('whatever' + Math.random())
+      })
+
+      p.on('data', data => {
+        console.log('received data: ' + data)
+      })
+
+      function callpubkey(){
+                // pass this data to the peer over impervious
+        let senddata = {
+            "msg": signaldata,
+            "pubkey": document.getElementById('pubkeytocall').value
+        }
+        console.log("calling impervious with ", senddata)
+        fetch('./callnode', {
+          method: 'post',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => console.log(res))
+      }
+
+
+      $(function(){
+
+        $("#callnode").on('click touch', function () {
+          callpubkey();
+        })
+      
+
+
+      })
+
+
+    </script>
+  </body>
+</html>
