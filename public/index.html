@@ -14,6 +14,8 @@
         white-space: normal;
       }
     </style>
+    <label for="mypubkey">my pubkey</label>
+    <input type="text" name="mypubkey" id="mypubkey"/>
     <label for="pubkeytocall">node pubkey to call</label>
     <input type="text" name="pubkeytocall" id="pubkeytocall"/>
     <button id="callnode">call node</button>
@@ -24,39 +26,52 @@
     <pre id="outgoing"></pre>
     <script src="simplepeer.min.js"></script>
     <script type="text/javascript" src="jquery.min.js"></script>
+    <script type="application/javascript" src="client.js"></script>
     <script>
       let signaldata
-      const p = new SimplePeer({
-        initiator: location.hash === '#1',
-        trickle: false
-      })
+      let isConnected = false
+      let p
 
-      p.on('error', err => console.log('error', err))
+      function initializesp (isInitiator, datatosignal) {
+        p = new SimplePeer({
+          // initiator: location.hash === '#1',
+          initiator: isInitiator,
+          trickle: false
+        })
 
-      p.on('signal', data => {
-        console.log('SIGNAL', JSON.stringify(data))
-        document.querySelector('#outgoing').textContent = JSON.stringify(data)
-        signaldata = data
-      })
+        p.on('error', err => console.log('error', err))
 
-      document.querySelector('form').addEventListener('submit', ev => {
-        ev.preventDefault()
-        p.signal(JSON.parse(document.querySelector('#incoming').value))
-      })
+        p.on('signal', data => {
+          console.log('SIGNAL', JSON.stringify(data))
+          document.querySelector('#outgoing').textContent = JSON.stringify(data)
+          signaldata = data
+        })
 
-      p.on('connect', () => {
-        console.log('CONNECT, sending stuff')
-        p.send('whatever' + Math.random())
-      })
+        // document.querySelector('form').addEventListener('submit', ev => {
+        //   ev.preventDefault()
+        //   p.signal(JSON.parse(document.querySelector('#incoming').value))
+        // })
 
-      p.on('data', data => {
-        console.log('received data: ' + data)
-      })
+        p.on('connect', () => {
+          isConnected = true
+          console.log('CONNECT, sending stuff')
+          p.send('whatever' + Math.random())
+        })
+
+        p.on('data', data => {
+          console.log('received data: ' + data)
+        })        
+
+        if(datatosignal) {
+          p.signal(datatosignal)
+        }
+      }
+
 
       function callpubkey(){
                 // pass this data to the peer over impervious
         let senddata = {
-            "msg": signaldata,
+            "msg": JSON.stringify(signaldata),
             "pubkey": document.getElementById('pubkeytocall').value
         }
         console.log("calling impervious with ", senddata)
@@ -68,20 +83,76 @@
           },
           body: JSON.stringify(senddata)
         }).then(res => res.json())
-          .then(res => console.log(res))
+          .then(res => {
+            console.log(res)
+
+            // start polling /activecall to check for answer
+            let interval = setInterval(function(){
+              fetch('./activecall', {
+                method: 'get',
+                headers: {
+                  'Accept': 'application/json, text/plain, */*',
+                  'Content-Type': 'application/json'
+                },
+                // body: JSON.stringify(senddata)
+              }).then(res => res.json())
+                .then(res => {
+                  console.log("activecall ", res)
+                  if(res.data) {
+                    p.signal(res.data)
+                    clearInterval(interval)                    
+                  }
+
+
+                })
+            }, 3000);
+
+          })
       }
 
 
       $(function(){
 
         $("#callnode").on('click touch', function () {
-          callpubkey();
+          callpubkey()
         })
       
+        let dataCookie = getCookie('data')
+        // console.log("dataCookie ", dataCookie)
+        deleteCookie('data')
 
+        if (dataCookie) {
+          // receiving a call
+          const data = parseObjectFromCookie(dataCookie)
+          console.log("got cookie data: ", data)
+          initializesp (false, data.data)
+          // p.signal(data.data)
+          $("#pubkeytocall").val(data.fromPubkey)
+          $("#callnode").text("accept call")
+          // work with data. `data` is equal to `visitCard` from the server
+        } else {
+          // handle data not found
+          console.log("no cookie data found")
+          // no pending call to answer, initialize for outbound call
+          initializesp (true)
+        }
 
       })
 
+      const getCookie = (name) => {
+        const value = "; " + document.cookie;
+        const parts = value.split("; " + name + "=");
+        if (parts.length === 2) return parts.pop().split(";").shift();
+      };
+
+      const deleteCookie = (name) => {
+        document.cookie = name + '=; max-age=0;';
+      };
+
+      const parseObjectFromCookie = (cookie) => {
+        const decodedCookie = decodeURIComponent(cookie);
+        return JSON.parse(decodedCookie);
+      };
 
     </script>
   </body>
