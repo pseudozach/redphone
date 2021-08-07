@@ -10,8 +10,10 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "bolt11": "^1.3.2",
     "express": "^4.17.1",
     "request": "^2.88.2",
+    "stormdb": "^0.5.1",
     "web-push": "^3.4.5",
     "ws": "^8.0.0"
   }

@@ -1,0 +1,350 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <title>RED ☎️</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- <link rel="stylesheet" href="style.css" charset="utf-8" /> -->
+    <meta name="description" content="Phone for your Lightning Node">
+    <link rel="icon" type="image/png" href="icon.png">
+    <link rel="stylesheet" href="pure-min.css">
+    <link rel="stylesheet" href="grids-responsive-min.css">
+  </head>
+  <body>
+    <style>
+      #outgoing {
+        width: 600px;
+        word-wrap: break-word;
+        white-space: normal;
+      }
+      body {
+        margin: 10px;
+      }
+      .centerit {
+        margin: auto;
+        display: block;
+      }
+      .centertext {
+        text-align: center;
+      }
+      .button-success,
+      .button-error,
+      .button-warning,
+      .button-secondary {
+          color: white;
+          border-radius: 4px;
+          text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+      }
+
+      .button-success {
+          background: rgb(28, 184, 65);
+          /* this is a green */
+      }
+    </style>
+    <form class="pure-form centertext" style="margin: 10px;">
+      <!-- <h1 style="display: inline; vertical-align: middle;">☎️</h1> -->
+      <label for="mypubkey">My Node ID</label>
+      <input type="text" name="mypubkey" id="mypubkey" readonly="" style="width: fit-content;" class="centerit"/>
+
+      <video autoplay="" id="player" style="display: none;"></video>
+    </form>
+
+    <div class="pure-g centertext">
+      <div class="pure-u-1 pure-u-md-1 pure-u-lg-1-2">
+        <form class="pure-form pure-form-aligned">
+          <fieldset>
+            <legend>Incoming Calls</legend>
+            <div id="incomingcalls">
+              No calls at the moment.
+
+
+
+            </div>
+          </fieldset>
+        </form>
+      </div>
+
+      <div class="pure-u-1 pure-u-md-1 pure-u-lg-1-2">
+        <form class="pure-form pure-form-stacked pure-form-aligned">
+          <fieldset>
+            <legend>Outgoing Calls</legend>
+            <label for="pubkeytocall">Node ID to Call</label>
+            <input type="text" name="pubkeytocall" id="pubkeytocall" class="pure-input-1" required=""/>
+            <button class="pure-button pure-button-primary centerit" id="callnode" disabled onclick="callpubkey('offer'); return false;">Call Node</button>
+          </fieldset>
+        </form>
+     
+<!--         <form>
+          <textarea id="incoming"></textarea>
+          <button type="submit">submit</button>
+        </form>
+        <pre id="outgoing"></pre> -->
+      </div>
+
+      <div class="pure-u-1 pure-u-md-1 pure-u-lg-1">
+        <form class="pure-form pure-form-stacked pure-form-aligned">
+          <fieldset>
+            <legend>Call History</legend>
+            <div id="callhistory">
+              No previous calls.
+            </div>
+          </fieldset>
+        </form>
+      </div>
+    </div>    
+    <script src="simplepeer.min.js"></script>
+    <script type="text/javascript" src="jquery.min.js"></script>
+    <script type="application/javascript" src="client.js"></script>
+    <script>
+      let signaldata
+      let isConnected = false
+      let p
+
+      async function initializesp (isInitiator, datatosignal) {
+
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: true
+        })
+
+        p = new SimplePeer({
+          // initiator: location.hash === '#1',
+          initiator: isInitiator,
+          trickle: false,
+          stream: stream
+        })
+
+        p.on('error', err => console.log('error', err))
+
+        p.on('signal', data => {
+          console.log('SIGNAL', JSON.stringify(data))
+          // document.querySelector('#outgoing').textContent = JSON.stringify(data)
+          signaldata = data
+          $("#callnode").removeAttr("disabled")
+          if($("#answercall").length){
+            $("#answercall").removeAttr("disabled")
+          }
+        })
+
+        // document.querySelector('form').addEventListener('submit', ev => {
+        //   ev.preventDefault()
+        //   p.signal(JSON.parse(document.querySelector('#incoming').value))
+        // })
+
+        p.on('connect', () => {
+          isConnected = true
+          console.log('CONNECT, sending stuff')
+          p.send('whatever' + Math.random())
+
+          // clear UI - prep for audio
+
+        })
+
+        p.on('data', data => {
+          console.log('received data: ' + data)
+        })        
+
+        p.on('stream', stream => {
+          console.log("received stream ", stream.getAudioTracks())
+          // got remote audio stream, now let's show it in a video tag
+          var video = document.querySelector('video')
+
+          if ('srcObject' in video) {
+            video.srcObject = stream
+          } else {
+            video.src = window.URL.createObjectURL(stream) // for older browsers
+          }
+          $("#player").show()
+          video.play()
+        })
+
+        if(datatosignal) {
+          p.signal(datatosignal)
+        }
+      }
+
+
+      function callpubkey(type){
+        // $("#callnode").attr("disabled","")
+        // pass this data to the peer over impervious
+        let pubkey = ""
+        if(type=="offer") {
+          pubkey = document.getElementById('pubkeytocall').value
+        } else {
+          // type==answer / incoming
+          pubkey = document.getElementById('pubkeytoanswer').value
+        }
+        let senddata = {
+            "msg": JSON.stringify(signaldata),
+            "pubkey": pubkey
+        }
+        console.log("calling impervious with ", senddata)
+        fetch('./callnode', {
+          method: 'post',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => {
+            console.log(res)
+
+            if(res.impres.includes("failed")) {
+              $("#callnode").removeAttr("disabled")
+              alert("Error: " + res.impres)
+              return false
+            }
+
+            if(res.status == "error") {
+              $("#callnode").removeAttr("disabled")
+              alert("Error: " + res.error)
+              return false
+            }
+
+            // // start polling /activecall to check for answer
+            // let interval = setInterval(function(){
+            //   fetch('./activecall', {
+            //     method: 'get',
+            //     headers: {
+            //       'Accept': 'application/json, text/plain, */*',
+            //       'Content-Type': 'application/json'
+            //     },
+            //     // body: JSON.stringify(senddata)
+            //   }).then(res => res.json())
+            //     .then(res => {
+            //       console.log("activecall ", res)
+            //       if(res.data) {
+            //         $("#callnode").removeAttr("disabled")
+            //         p.signal(res.data)
+            //         clearInterval(interval)                    
+            //       }
+
+
+            //     })
+            // }, 3000);
+
+
+          })
+      }
+
+      function getcallhistory(){
+        fetch('./callhistory', {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          // body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => {
+            console.log("getcallhistory: ", res)
+
+            // populate the table
+            if(res.length > 0) {
+              $("#callhistory").empty()
+              var mydata = eval(res);
+              var table = $.makeTable(mydata);
+              $(table).appendTo("#callhistory");
+            }
+
+          })
+      }
+
+      function getmynodeid(){
+        fetch('./nodeid', {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          // body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => {
+            console.log("nodeid: ", res)
+
+            // populate the table
+            if(res.status == "ok") {
+              $("#mypubkey").val(res.nodeid)
+            }
+
+          })
+      }
+
+
+      $(function(){
+
+        let dataCookie = getCookie('data')
+        // console.log("dataCookie ", dataCookie)
+        deleteCookie('data')
+
+        if (dataCookie) {
+          // receiving a call
+          const data = parseObjectFromCookie(dataCookie)
+          console.log("got cookie data: ", data)
+          initializesp (false, data.data)
+          // p.signal(data.data)
+          // $("#pubkeytocall").val(data.fromPubkey)
+          // $("#callnode").text("accept call")
+          // work with data. `data` is equal to `visitCard` from the server
+
+          $("#incomingcalls").empty()
+          let $input = $("<input>", {"type": "text", "value": data.fromPubkey, "readonly":"", "id":"pubkeytoanswer"})
+          let $button = $("<button>", {"class": "pure-button button-success" , "disabled":"", "id":"answercall", "style":"margin-left: 5px;", "onclick": "callpubkey('answer'); return false;"})
+          $button.append("Answer")
+          let $fieldset = $("<fieldset>", {})
+          let $form = $("<form>", {"class": "pure-form"})
+          $fieldset.append($input)
+          $fieldset.append($button)
+          $form.append($fieldset)
+          $("#incomingcalls").append($form)
+
+        } else {
+          // handle data not found
+          console.log("no cookie data found")
+          // no pending call to answer, initialize for outbound call
+          initializesp (true)
+        }
+
+        getmynodeid()
+        getcallhistory()
+
+      })
+
+      const getCookie = (name) => {
+        const value = "; " + document.cookie;
+        const parts = value.split("; " + name + "=");
+        if (parts.length === 2) return parts.pop().split(";").shift();
+      };
+
+      const deleteCookie = (name) => {
+        document.cookie = name + '=; max-age=0;';
+      };
+
+      const parseObjectFromCookie = (cookie) => {
+        const decodedCookie = decodeURIComponent(cookie);
+        return JSON.parse(decodedCookie);
+      };
+
+      $.makeTable = function (mydata) {
+          var table = $('<table class="pure-table centerit" border=1>');
+          var tblHeader = "<tr>";
+          for (var k in mydata[0]) tblHeader += "<th>" + k + "</th>";
+          tblHeader += "</tr>";
+          $(tblHeader).appendTo(table);
+          $.each(mydata, function (index, value) {
+              var TableRow = "<tr>";
+              $.each(value, function (key, val) {
+                  if(key=="timestamp"){
+                    val = new Date(val)
+                  }
+                  TableRow += "<td>" + val + "</td>";
+              });
+              TableRow += "</tr>";
+              $(table).append(TableRow);
+          });
+          return ($(table));
+      };
+
+    </script>
+  </body>
+</html>
