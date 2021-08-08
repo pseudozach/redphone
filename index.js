@@ -139,6 +139,9 @@ var app = express()
   })
   .post('/callnode', (req,res) => {
     let data = req.body;
+    if(!data.pubkey || !data.msg) {
+      return res.send({status:"error", error:"missing required data"})
+    }
     // console.log("1callnode received ", data)
     console.log("callnode received - sending this to imp ", JSON.stringify(data), JSON.stringify(data).length)
     // console.log("3callnode received ", encodeURI(JSON.stringify(data)))

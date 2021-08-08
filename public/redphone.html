@@ -40,6 +40,54 @@
           background: rgb(28, 184, 65);
           /* this is a green */
       }
+
+      .button-error {
+          background: rgb(202, 60, 60);
+          /* this is a maroon */
+      }
+
+      .button-warning {
+          background: rgb(223, 117, 20);
+          /* this is an orange */
+      }
+
+      .button-secondary {
+          background: rgb(66, 184, 221);
+          /* this is a light blue */
+      }
+
+      .lds-ripple {
+        display: inline-block;
+        position: relative;
+        width: 80px;
+        height: 80px;
+      }
+      .lds-ripple div {
+        position: absolute;
+        border: 4px solid #f00;
+        opacity: 1;
+        border-radius: 50%;
+        animation: lds-ripple 1s cubic-bezier(0, 0.2, 0.8, 1) infinite;
+      }
+      .lds-ripple div:nth-child(2) {
+        animation-delay: -0.5s;
+      }
+      @keyframes lds-ripple {
+        0% {
+          top: 36px;
+          left: 36px;
+          width: 0;
+          height: 0;
+          opacity: 1;
+        }
+        100% {
+          top: 0px;
+          left: 0px;
+          width: 72px;
+          height: 72px;
+          opacity: 0;
+        }
+      }
     </style>
     <form class="pure-form centertext" style="margin: 10px;">
       <!-- <h1 style="display: inline; vertical-align: middle;">☎️</h1> -->
@@ -73,7 +121,8 @@
             <legend>Outgoing Calls</legend>
             <label for="pubkeytocall">Node ID to Call</label>
             <input type="text" name="pubkeytocall" id="pubkeytocall" class="pure-input-1" required=""/>
-            <button class="pure-button pure-button-primary centerit" id="callnode" disabled onclick="callpubkey('offer'); return false;">Call Node</button>
+            <button class="pure-button button-error centerit" id="callnode" disabled onclick="callpubkey('offer'); return false;">Call Node</button>
+            <div class="lds-ripple" id="loading" style="display: none;"><div></div><div></div></div>
           </fieldset>
         </form>
      
@@ -199,7 +248,8 @@
 
 
       function callpubkey(type){
-        // $("#callnode").attr("disabled","")
+        $("#callnode").attr("disabled","")
+        $("#loading").show()
         // pass this data to the peer over impervious
         let pubkey = ""
         if(type=="offer") {
@@ -224,15 +274,17 @@
           .then(res => {
             console.log(res)
 
-            if(res.impres.includes("failed")) {
+            if(res.status == "error") {
               $("#callnode").removeAttr("disabled")
-              alert("Error: " + res.impres)
+              $("#loading").hide()
+              alert("Error: " + res.error)
               return false
             }
 
-            if(res.status == "error") {
+            if(res.impres.includes("failed")) {
               $("#callnode").removeAttr("disabled")
-              alert("Error: " + res.error)
+              $("#loading").hide()
+              alert("Error: " + res.impres)
               return false
             }
 
@@ -251,6 +303,7 @@
                     console.log("activecall ", res)
                     if(res.data) {
                       $("#callnode").removeAttr("disabled")
+                      $("#loading").hide()
                       p.signal(res.data)
                       clearInterval(interval)                    
                     }
