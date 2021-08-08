@@ -29,8 +29,9 @@ var lightningPayReq = require('bolt11')
 
 webpush.setVapidDetails('mailto:redphone@pseudozach.com', "BA-QZs7Kv0e-C3F9gZP-que9oPj2nRB1zc9Cb06EZF0vzyHcoXrlmiRZ_HVrnJERnivIVg3A-JufV9HrcVoopk8", "mOc9-0gOwMvhvozXl5dZSHJ_zl-GhvDMeKQEuqBDcLY")
 
-const redphoneport = process.argv.slice(2)[0] || 8888;
-const imperviousport = process.argv.slice(3)[0] || 8881;
+const redphoneport = process.argv.slice(2)[0] || 8888
+const imperviousport = process.argv.slice(3)[0] || 8881
+const impervioushost = "192.168.0.191"
 
 const engine = new StormDB.localFileEngine("./"+redphoneport+"db.stormdb");
 const db = new StormDB(engine);
@@ -77,7 +78,7 @@ var app = express()
     const data = {amount: 10, memo: ""}
     request({
       method: 'POST',
-      url: "http://localhost:"+imperviousport+"/v1/lightning/generateinvoice",
+      url: "http://"+impervioushost+":"+imperviousport+"/v1/lightning/generateinvoice",
       headers: {
         'Content-Type': 'application/json'
       },
@@ -110,14 +111,14 @@ var app = express()
       db.get("activecall").get(0).delete(true)
       db.save()
     } 
-    console.log("/activecall got activecall ", activecall)
+    // console.log("/activecall got activecall ", activecall)
     if(!activecall) activecall={}
     return res.send(activecall)
   })
   .get('/callhistory', (req,res) => {
     let callhistory = db.get("callhistory").value()
     if(!callhistory) callhistory=[]
-    console.log("/callhistory got callhistory ", callhistory)
+    // console.log("/callhistory got callhistory ", callhistory)
     return res.send(callhistory)
   })
   .get('/', (req,res) => {
@@ -127,7 +128,7 @@ var app = express()
     } 
     console.log("/redphone got activecall ", activecall)
     if(activecall && activecall.data) {
-      console.log("adding activecall cookie", activecall)
+      // console.log("adding activecall cookie", activecall)
       res.cookie('data', JSON.stringify(activecall))
       db.get("activecall").get(0).delete(true)
       db.save()
@@ -201,7 +202,7 @@ var app = express()
           console.log("sending data: ", packettosend)
           request({
             method: 'POST',
-            url: "http://localhost:"+imperviousport+"/v1/message/send",
+            url: "http://"+impervioushost+":"+imperviousport+"/v1/message/send",
             headers: {
               'Accept': 'application/json, text/plain, */*',
               'Content-Type': 'application/json'
@@ -213,7 +214,7 @@ var app = express()
               // return res.send({status: "error", error: error})
             }
           })
-        }, i*3000)
+        }, i*1000)
 
 
       }
@@ -224,7 +225,7 @@ var app = express()
 
       request({
         method: 'POST',
-        url: "http://localhost:"+imperviousport+"/v1/message/send",
+        url: "http://"+impervioushost+":"+imperviousport+"/v1/message/send",
         headers: {
           'Content-Type': 'application/json'
         },
@@ -247,7 +248,7 @@ var app = express()
   })
 
 
-const ws = new WebSocket('ws://localhost:'+imperviousport+'/v1/subscribe')
+const ws = new WebSocket('ws://'+impervioushost+':'+imperviousport+'/v1/subscribe')
 
 ws.on('open', function open() {
   console.log(`connected to impervious websocket on `+ imperviousport)
@@ -293,23 +294,29 @@ ws.on('message', function incoming(message) {
 function savepacket(webrtcdata, fromPubkey) {
   try {
     let data = JSON.parse(webrtcdata)
-    console.log("got redphone call with fromPubkey, data ", fromPubkey, data)
+    // console.log("got redphone call with fromPubkey, data ", fromPubkey, data)
     let datajson = JSON.parse(data)
 
     let activecall = {fromPubkey: fromPubkey, data: datajson, timestamp: new Date().getTime()}
-    console.log("ws.on activecall set: ", activecall)
-    db.get("callhistory").push({timestamp: new Date().getTime(), fromPubkey: fromPubkey})
-    db.get("activecall").push(activecall)
-    db.save()
-
-    let notificationText = '*ring* ' + fromPubkey + ' is calling!'
+    // console.log("ws.on activecall set: ", activecall)
+    let calltype
+    let notificationText
     if(activecall.data.type=="answer"){
       notificationText = "*answer* from " + fromPubkey
+      calltype="outgoing"
+    } else {
+      // offer - outgoing call
+      calltype="incoming"
+      notificationText = '*ring* ' + fromPubkey + ' is calling!'
     }
+    db.get("activecall").push(activecall)  
+    db.get("callhistory").push({timestamp: new Date().getTime(), fromPubkey: fromPubkey, type:calltype})
+    db.save()
+
     const payload = JSON.stringify({ title: 'Red Phone', body: notificationText, icon: './icon.png'})
     // TODO: probably want to loop through all subscriptions
     let subscription = db.get("subscriptions").get(0).value()
-    console.log("got subscription from db ", subscription)
+    // console.log("got subscription from db ", subscription)
     webpush.sendNotification(subscription, payload).catch(error => {
       console.error(error.stack)
     })       

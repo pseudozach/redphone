@@ -45,8 +45,6 @@
       <!-- <h1 style="display: inline; vertical-align: middle;">☎️</h1> -->
       <label for="mypubkey">My Node ID</label>
       <input type="text" name="mypubkey" id="mypubkey" readonly="" style="width: fit-content;" class="centerit"/>
-
-      <video autoplay="" id="player" style="display: none;"></video>
     </form>
 
     <div class="pure-g centertext">
@@ -55,9 +53,14 @@
           <fieldset>
             <legend>Incoming Calls</legend>
             <div id="incomingcalls">
-              No calls at the moment.
+              <p id="nocalls">No calls at the moment.</p>
 
-
+              <div id="callconnected" style="display: none;">
+                <audio controls autoplay="" id="player" style="display: block; margin: auto; margin-bottom: 20px;"></audio>
+                <button class="pure-button" id="mutebutton" onclick="toggleMic(); return false;">Mute</button>
+                <button class="pure-button" id="disconnectbutton" onclick="disconnectCall(); return false;">Disconnect</button>
+              </div>
+              
 
             </div>
           </fieldset>
@@ -95,16 +98,37 @@
     <script src="simplepeer.min.js"></script>
     <script type="text/javascript" src="jquery.min.js"></script>
     <script type="application/javascript" src="client.js"></script>
+    <!-- <script type="application/javascript" src="soundmeter.js"></script> -->
     <script>
       let signaldata
       let isConnected = false
       let p
+      let currentstream
 
       async function initializesp (isInitiator, datatosignal) {
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true
         })
+        currentstream = stream
+
+        // // soundmeter
+        // window.stream = stream;
+        // const soundMeter = window.soundMeter = new SoundMeter(window.audioContext);
+        // soundMeter.connectToSource(stream, function(e) {
+        //   if (e) {
+        //     alert(e);
+        //     return;
+        //   }
+        //   meterRefresh = setInterval(() => {
+        //     instantMeter.value = instantValueDisplay.innerText =
+        //       soundMeter.instant.toFixed(2);
+        //     slowMeter.value = slowValueDisplay.innerText =
+        //       soundMeter.slow.toFixed(2);
+        //     clipMeter.value = clipValueDisplay.innerText =
+        //       soundMeter.clip;
+        //   }, 200);
+        // });
 
         p = new SimplePeer({
           // initiator: location.hash === '#1',
@@ -136,7 +160,18 @@
           p.send('whatever' + Math.random())
 
           // clear UI - prep for audio
+          // $("#incomingcalls").empty()
+          $("#answerform").hide()
+          $("#nocalls").hide()
 
+          // connect/stop/mute button
+          $("#callconnected").show()
+
+        })
+
+        p.on('close', () => {
+          $("#callconnected").hide()
+          $("#nocalls").show()
         })
 
         p.on('data', data => {
@@ -146,7 +181,7 @@
         p.on('stream', stream => {
           console.log("received stream ", stream.getAudioTracks())
           // got remote audio stream, now let's show it in a video tag
-          var video = document.querySelector('video')
+          var video = document.querySelector('audio')
 
           if ('srcObject' in video) {
             video.srcObject = stream
@@ -201,27 +236,29 @@
               return false
             }
 
-            // // start polling /activecall to check for answer
-            // let interval = setInterval(function(){
-            //   fetch('./activecall', {
-            //     method: 'get',
-            //     headers: {
-            //       'Accept': 'application/json, text/plain, */*',
-            //       'Content-Type': 'application/json'
-            //     },
-            //     // body: JSON.stringify(senddata)
-            //   }).then(res => res.json())
-            //     .then(res => {
-            //       console.log("activecall ", res)
-            //       if(res.data) {
-            //         $("#callnode").removeAttr("disabled")
-            //         p.signal(res.data)
-            //         clearInterval(interval)                    
-            //       }
+            if(type=="offer") {
+              // start polling /activecall to check for answer
+              let interval = setInterval(function(){
+                fetch('./activecall', {
+                  method: 'get',
+                  headers: {
+                    'Accept': 'application/json, text/plain, */*',
+                    'Content-Type': 'application/json'
+                  },
+                  // body: JSON.stringify(senddata)
+                }).then(res => res.json())
+                  .then(res => {
+                    console.log("activecall ", res)
+                    if(res.data) {
+                      $("#callnode").removeAttr("disabled")
+                      p.signal(res.data)
+                      clearInterval(interval)                    
+                    }
 
 
-            //     })
-            // }, 3000);
+                  })
+              }, 3000)
+            }
 
 
           })
@@ -287,12 +324,12 @@
           // $("#callnode").text("accept call")
           // work with data. `data` is equal to `visitCard` from the server
 
-          $("#incomingcalls").empty()
+          $("#nocalls").hide()
           let $input = $("<input>", {"type": "text", "value": data.fromPubkey, "readonly":"", "id":"pubkeytoanswer"})
           let $button = $("<button>", {"class": "pure-button button-success" , "disabled":"", "id":"answercall", "style":"margin-left: 5px;", "onclick": "callpubkey('answer'); return false;"})
           $button.append("Answer")
           let $fieldset = $("<fieldset>", {})
-          let $form = $("<form>", {"class": "pure-form"})
+          let $form = $("<form>", {"class": "pure-form", "id":"answerform"})
           $fieldset.append($input)
           $fieldset.append($button)
           $form.append($fieldset)
@@ -328,7 +365,14 @@
       $.makeTable = function (mydata) {
           var table = $('<table class="pure-table centerit" border=1>');
           var tblHeader = "<tr>";
-          for (var k in mydata[0]) tblHeader += "<th>" + k + "</th>";
+          for (var k in mydata[0]){
+            if(k=="type") {
+              tblHeader += "<th style='width:10%;'>" + k + "</th>";
+            } else {
+              tblHeader += "<th style='width:50%;'>" + k + "</th>";
+            }
+            
+          } 
           tblHeader += "</tr>";
           $(tblHeader).appendTo(table);
           $.each(mydata, function (index, value) {
@@ -344,6 +388,26 @@
           });
           return ($(table));
       };
+
+      function toggleMic() { // stream is your local WebRTC stream
+        if($("#mutebutton").text()=="Mute") {
+          $("#mutebutton").addClass("pure-button-active")
+          $("#mutebutton").text("Unmute")
+        } else {
+          $("#mutebutton").removeClass("pure-button-active")
+          $("#mutebutton").text("Mute")          
+        }
+
+        var audioTracks = currentstream.getAudioTracks();
+        for (var i = 0, l = audioTracks.length; i < l; i++) {
+          audioTracks[i].enabled = !audioTracks[i].enabled;
+        }
+      }
+
+      function disconnectCall(){
+        p.destroy()
+        $("#callconnected").hide()
+      }
 
     </script>
   </body>
