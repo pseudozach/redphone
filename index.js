@@ -10,7 +10,8 @@ webpush.setVapidDetails('mailto:redphone@pseudozach.com', "BA-QZs7Kv0e-C3F9gZP-q
 
 const redphoneport = process.argv.slice(2)[0] || 8888
 const imperviousport = process.argv.slice(3)[0] || 8881
-const impervioushost = "192.168.0.191"
+// "192.168.0.191" - if you have LN+impervious on another box
+const impervioushost = "localhost" 
 
 const defaultringcount = 40 // x3 seconds to wait for answer to a call
 
@@ -22,16 +23,6 @@ if(!db.get("callhistory").value()) {
   db.default({ activecall: [], callhistory: [], subscriptions:[]}).save()
   // db.default({callhistory:[]})
 }
-
-// if(!db.get("activecall").value()) {
-//   db.default({activecall:[]})
-// }
-// if(!db.get("subscriptions").value()) {
-//   db.default({subscriptions:[]})
-// }
-
-// let activecall = {}
-// let subscription
 
 var app = express()
   .use(bodyParser.json())
@@ -137,49 +128,6 @@ var app = express()
     console.log("callnode received - sending this to imp ", JSON.stringify(data), JSON.stringify(data).length)
     // console.log("3callnode received ", encodeURI(JSON.stringify(data)))
 
-
-    // // sockets - udp is annoying - back to messages - maybe I'll write my own tcp
-    // request({
-    //   method: 'POST',
-    //   url: "http://localhost:"+imperviousport+"/v1/socket/start",
-    //   headers: {
-    //     'Content-Type': 'application/json'
-    //   },
-    //   body: JSON.stringify(data)
-    // }, function (error, response, body) {
-    //   if(error) {
-    //     console.log("imp error: ", error)
-    //     return res.send({status: "error", error: error})
-    //   }
-
-    //   console.log("socket start imp response body: ", body)
-    //   // {\"protocol\":\"udp\", \"ip\":\"1.1.1.1\", \"port1\":\":6000\", \"port2\":\":9000\"}"}
-    //   // setup socket to the peer IMP
-
-    //   request({
-    //     method: 'POST',
-    //     url: "http://localhost:"+imperviousport+"/v1/socket/sendRequest",
-    //     headers: {
-    //       'Content-Type': 'application/json'
-    //     },
-    //     body: JSON.stringify(data)
-    //   }, function (error, response, body) {
-    //     if(error) {
-    //       console.log("imp error: ", error)
-    //       return res.send({status: "error", error: error})
-    //     }
-
-    //     console.log("socket send imp response body: ", body)
-    //     // {\"protocol\":\"udp\", \"ip\":\"1.1.1.1\", \"port1\":\":6000\", \"port2\":\":9000\"}"}
-    //     // setup socket to the peer IMP
-
-    //     return res.send({status: "ok", "impres": body})
-    //   })
-
-    // })
-
-
-
     // flip - I thought send message would be enough but looks like I need sockets :( - nope nevermind
     let fulldata = JSON.stringify(data.msg)+"rppacketend"
     if(fulldata.length > 890) {
@@ -193,7 +141,7 @@ var app = express()
         // packets.push(packet)
 
         setTimeout(function(){
-          console.log("sending data: ", packettosend)
+          // console.log("sending data: ", packettosend)
           request({
             method: 'POST',
             url: "http://"+impervioushost+":"+imperviousport+"/v1/message/send",
