@@ -99,7 +99,7 @@
       <div class="pure-u-1 pure-u-md-1 pure-u-lg-1-2">
         <form class="pure-form pure-form-aligned">
           <fieldset>
-            <legend>Incoming Calls</legend>
+            <legend>Active Call</legend>
             <div id="incomingcalls">
               <p id="nocalls">No calls at the moment.</p>
 
@@ -109,7 +109,7 @@
                 <button class="pure-button" id="disconnectbutton" onclick="disconnectCall(); return false;">Disconnect</button>
               </div>
               
-
+              <div class="lds-ripple" id="loadinganswer" style="display: none;"><div></div><div></div></div>
             </div>
           </fieldset>
         </form>
@@ -118,10 +118,11 @@
       <div class="pure-u-1 pure-u-md-1 pure-u-lg-1-2">
         <form class="pure-form pure-form-stacked pure-form-aligned">
           <fieldset>
-            <legend>Outgoing Calls</legend>
-            <label for="pubkeytocall">Node ID to Call</label>
-            <input type="text" name="pubkeytocall" id="pubkeytocall" class="pure-input-1" required=""/>
-            <button class="pure-button button-error centerit" id="callnode" disabled onclick="callpubkey('offer'); return false;">Call Node</button>
+            <legend>Start Call</legend>
+            <label for="pubkeytocall">Target Node ID</label>
+            <input type="text" name="pubkeytocall" id="pubkeytocall" class="pure-input-1" required="" placeholder="02152462827cd693be942184b2863d9d6057ddbe292dfdc5081464263da0354347" />
+            <!-- callpubkey('offer'); -->
+            <button class="pure-button button-error centerit" id="callnode" onclick="initializesp(true, null, true); return false;">Call Node</button>
             <div class="lds-ripple" id="loading" style="display: none;"><div></div><div></div></div>
           </fieldset>
         </form>
@@ -149,36 +150,20 @@
     <script type="application/javascript" src="client.js"></script>
     <!-- <script type="application/javascript" src="soundmeter.js"></script> -->
     <script>
+      let defaultringcount = 40 // x3 seconds to wait for answer to a call
       let signaldata
       let isConnected = false
       let p
       let currentstream
 
-      async function initializesp (isInitiator, datatosignal) {
+      async function initializesp (isInitiator, datatosignal, isClicked) {
 
         const stream = await navigator.mediaDevices.getUserMedia({
           audio: true
         })
         currentstream = stream
 
-        // // soundmeter
-        // window.stream = stream;
-        // const soundMeter = window.soundMeter = new SoundMeter(window.audioContext);
-        // soundMeter.connectToSource(stream, function(e) {
-        //   if (e) {
-        //     alert(e);
-        //     return;
-        //   }
-        //   meterRefresh = setInterval(() => {
-        //     instantMeter.value = instantValueDisplay.innerText =
-        //       soundMeter.instant.toFixed(2);
-        //     slowMeter.value = slowValueDisplay.innerText =
-        //       soundMeter.slow.toFixed(2);
-        //     clipMeter.value = clipValueDisplay.innerText =
-        //       soundMeter.clip;
-        //   }, 200);
-        // });
-
+        console.log("SimplePeer init ", isInitiator, datatosignal, isClicked)
         p = new SimplePeer({
           // initiator: location.hash === '#1',
           initiator: isInitiator,
@@ -186,7 +171,33 @@
           stream: stream
         })
 
-        p.on('error', err => console.log('error', err))
+        // if(!isInitiator) {
+        //   let p2 = new SimplePeer({
+        //     // initiator: location.hash === '#1',
+        //     initiator: false,
+        //     trickle: false,
+        //     stream: stream
+        //   })
+        //   p2 = p
+        //   console.log("inited p2 ", p2)
+        // } else {
+        //   p = new SimplePeer({
+        //     // initiator: location.hash === '#1',
+        //     initiator: isInitiator,
+        //     trickle: false,
+        //     stream: stream
+        //   })
+        // }
+
+        p.on('error', err => {
+          console.log('error', err)
+          // show alert/toast or something
+          $("#answercall").removeAttr("disabled")
+          $("#loadinganswer").hide()
+          $("#callnode").removeAttr("disabled")
+          $("#loading").hide()
+          $("#answerform").remove()
+        })
 
         p.on('signal', data => {
           console.log('SIGNAL', JSON.stringify(data))
@@ -196,6 +207,16 @@
           if($("#answercall").length){
             $("#answercall").removeAttr("disabled")
           }
+
+          if(isInitiator && isClicked) {
+            console.log("callpubkey with offer")
+            callpubkey("offer")
+          }
+          // if(!isInitiator && isClicked) {
+          //   console.log("callpubkey with answer")
+          //   callpubkey("answer")            
+          // }
+
         })
 
         // document.querySelector('form').addEventListener('submit', ev => {
@@ -204,14 +225,17 @@
         // })
 
         p.on('connect', () => {
-          isConnected = true
           console.log('CONNECT, sending stuff')
           p.send('whatever' + Math.random())
-
+          isConnected = true  
+          
           // clear UI - prep for audio
           // $("#incomingcalls").empty()
           $("#answerform").hide()
           $("#nocalls").hide()
+          $("#callnode").removeAttr("disabled")
+          $("#loading").hide()
+          $("#loadinganswer").hide()
 
           // connect/stop/mute button
           $("#callconnected").show()
@@ -219,6 +243,7 @@
         })
 
         p.on('close', () => {
+          console.log("p closed")
           $("#callconnected").hide()
           $("#nocalls").show()
         })
@@ -241,21 +266,30 @@
           video.play()
         })
 
-        if(datatosignal) {
-          p.signal(datatosignal)
-        }
+        setTimeout(function() {
+          if(datatosignal) {
+            console.log("p.signal sending", datatosignal)
+            p.signal(datatosignal)
+            datatosignal = null
+          }          
+        }, 3000)
+
+        console.log("SimplePeer init end ", isInitiator, datatosignal, isClicked)
+
       }
 
 
       function callpubkey(type){
-        $("#callnode").attr("disabled","")
-        $("#loading").show()
         // pass this data to the peer over impervious
         let pubkey = ""
         if(type=="offer") {
+          $("#callnode").attr("disabled","")
+          $("#loading").show()
           pubkey = document.getElementById('pubkeytocall').value
         } else {
           // type==answer / incoming
+          $("#answercall").attr("disabled","")
+          $("#loadinganswer").show()
           pubkey = document.getElementById('pubkeytoanswer').value
         }
         let senddata = {
@@ -277,6 +311,8 @@
             if(res.status == "error") {
               $("#callnode").removeAttr("disabled")
               $("#loading").hide()
+              $("#answercall").removeAttr("disabled")
+              $("#loadinganswer").hide()
               alert("Error: " + res.error)
               return false
             }
@@ -284,34 +320,48 @@
             if(res.impres.includes("failed")) {
               $("#callnode").removeAttr("disabled")
               $("#loading").hide()
+              $("#answercall").removeAttr("disabled")
+              $("#loadinganswer").hide()
               alert("Error: " + res.impres)
               return false
             }
 
-            if(type=="offer") {
-              // start polling /activecall to check for answer
-              let interval = setInterval(function(){
-                fetch('./activecall', {
-                  method: 'get',
-                  headers: {
-                    'Accept': 'application/json, text/plain, */*',
-                    'Content-Type': 'application/json'
-                  },
-                  // body: JSON.stringify(senddata)
-                }).then(res => res.json())
-                  .then(res => {
-                    console.log("activecall ", res)
-                    if(res.data) {
-                      $("#callnode").removeAttr("disabled")
-                      $("#loading").hide()
-                      p.signal(res.data)
-                      clearInterval(interval)                    
-                    }
+            // doing this via trigger from service worker now - not used
+            // if(type=="offer") {
+            //   // start polling /activecall to check for answer
+            //   let ringcount = 0
+            //   let interval = setInterval(function(){
+            //     if(ringcount < defaultringcount) {
+            //       ringcount++
+            //       fetch('./activecall', {
+            //         method: 'get',
+            //         headers: {
+            //           'Accept': 'application/json, text/plain, */*',
+            //           'Content-Type': 'application/json'
+            //         },
+            //         // body: JSON.stringify(senddata)
+            //       }).then(res => res.json())
+            //         .then(res => {
+            //           console.log("activecall ", res)
+            //           if(res.data) {
+            //             $("#callnode").removeAttr("disabled")
+            //             $("#loading").hide()
+            //             p.signal(res.data)
+            //             clearInterval(interval)                    
+            //           }
 
 
-                  })
-              }, 3000)
-            }
+            //         })
+            //     } else {
+            //       ringcount = 0
+            //       clearInterval(interval) 
+            //       $("#callnode").removeAttr("disabled")
+            //       $("#loading").hide()
+            //       alert("no answer")
+            //     }
+
+            //   }, 3000)
+            // }
 
 
           })
@@ -327,7 +377,7 @@
           // body: JSON.stringify(senddata)
         }).then(res => res.json())
           .then(res => {
-            console.log("getcallhistory: ", res)
+            // console.log("getcallhistory: ", res)
 
             // populate the table
             if(res.length > 0) {
@@ -392,7 +442,7 @@
           // handle data not found
           console.log("no cookie data found")
           // no pending call to answer, initialize for outbound call
-          initializesp (true)
+          // initializesp (true)
         }
 
         getmynodeid()
@@ -416,31 +466,32 @@
       };
 
       $.makeTable = function (mydata) {
-          var table = $('<table class="pure-table centerit" border=1>');
-          var tblHeader = "<tr>";
-          for (var k in mydata[0]){
-            if(k=="type") {
-              tblHeader += "<th style='width:10%;'>" + k + "</th>";
-            } else {
-              tblHeader += "<th style='width:50%;'>" + k + "</th>";
-            }
-            
-          } 
-          tblHeader += "</tr>";
-          $(tblHeader).appendTo(table);
-          $.each(mydata, function (index, value) {
-              var TableRow = "<tr>";
-              $.each(value, function (key, val) {
-                  if(key=="timestamp"){
-                    val = new Date(val)
-                  }
-                  TableRow += "<td>" + val + "</td>";
-              });
-              TableRow += "</tr>";
-              $(table).append(TableRow);
+        var table = $('<table class="pure-table centerit" border=1>');
+        var tblHeader = "<tr>";
+        for (var k in mydata[0]){
+          if(k=="type") {
+            tblHeader += "<th style='width:10%;'>" + k + "</th>";
+          } else {
+            tblHeader += "<th style='width:50%;'>" + k + "</th>";
+          }
+          
+        } 
+        tblHeader += "</tr>";
+        $(tblHeader).appendTo(table);
+        $.each(mydata, function (index, value) {
+          // TODO: sort by timestamp/get newest entries/limit to 10/paginate
+          var TableRow = "<tr>";
+          $.each(value, function (key, val) {
+              if(key=="timestamp"){
+                val = new Date(val)
+              }
+              TableRow += "<td>" + val + "</td>";
           });
-          return ($(table));
-      };
+          TableRow += "</tr>";
+          $(table).append(TableRow);
+        });
+        return ($(table));
+      }
 
       function toggleMic() { // stream is your local WebRTC stream
         if($("#mutebutton").text()=="Mute") {
@@ -458,9 +509,67 @@
       }
 
       function disconnectCall(){
+        console.log("disconnectCall")
         p.destroy()
         $("#callconnected").hide()
       }
+
+      // navigator.serviceWorker.addEventListener('message', function (event) {
+      //   console.log('event listener', event);
+      // })
+
+      // From your client pages:
+      const channel = new BroadcastChannel('sw-messages');
+      channel.addEventListener('message', event => {
+        console.log('Received', event.data);
+        if(event.data.title=="redphone") {
+          fetch('./activecall', {
+            method: 'get',
+            headers: {
+              'Accept': 'application/json, text/plain, */*',
+              'Content-Type': 'application/json'
+            },
+            // body: JSON.stringify(senddata)
+          })
+          .then(res => res.json())
+          .then(res => {
+            console.log("incoming activecall ", res)
+            let data = res
+            if(data.data.type == "offer") {
+              // build answer UI from this data
+              // p.destroy()
+              // p = null
+              $("#nocalls").hide()
+              let $input = $("<input>", {"type": "text", "value": data.fromPubkey, "readonly":"", "id":"pubkeytoanswer"})
+              let $button = $("<button>", {"class": "pure-button button-success" , "id":"answercall", "disabled":"", "style":"margin-left: 5px;", "onclick": "callpubkey('answer'); return false;"})
+              $button.append("Answer")
+              let $fieldset = $("<fieldset>", {})
+              let $form = $("<form>", {"class": "pure-form", "id":"answerform"})
+              $fieldset.append($input)
+              $fieldset.append($button)
+              $form.append($fieldset)
+              $("#incomingcalls").append($form)              
+
+              initializesp(false,data.data)
+              console.log("after initializesp")
+
+              // initializesp (false)
+              // 
+              // setTimeout(function(){
+              //   console.log("p should exist -> signal")
+              //   p.signal(data.data)
+              // }, 3000)
+              
+
+            } else {
+              console.log("type=answer so signal to peer ", data.data)
+              p.signal(data.data) 
+              $("#callnode").removeAttr("disabled")
+              $("#loading").hide()
+            }
+          })
+        }
+      })
 
     </script>
   </body>

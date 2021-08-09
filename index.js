@@ -6,32 +6,13 @@ const webpush = require('web-push');
 const StormDB = require("stormdb");
 var lightningPayReq = require('bolt11')
 
-// var udp = require('dgram');
-// var buffer = require('buffer');
-// // creating a client socket
-// var client = udp.createSocket('udp4');
-// //buffer msg
-// var data1 = Buffer.from('hello');
-// var data2 = Buffer.from('world');
-// client.on('message',function(msg,info){
-//   console.log('Data received from server : ' + msg.toString());
-//   console.log('Received %d bytes from %s:%d\n',msg.length, info.address, info.port);
-// });
-// //sending msg
-// client.send([data1,data2],6000,'localhost',function(error){
-//   if(error){
-//     client.close();
-//   }else{
-//     console.log('Data sent !!!');
-//   }
-// });
-
-
 webpush.setVapidDetails('mailto:redphone@pseudozach.com', "BA-QZs7Kv0e-C3F9gZP-que9oPj2nRB1zc9Cb06EZF0vzyHcoXrlmiRZ_HVrnJERnivIVg3A-JufV9HrcVoopk8", "mOc9-0gOwMvhvozXl5dZSHJ_zl-GhvDMeKQEuqBDcLY")
 
 const redphoneport = process.argv.slice(2)[0] || 8888
 const imperviousport = process.argv.slice(3)[0] || 8881
 const impervioushost = "192.168.0.191"
+
+const defaultringcount = 40 // x3 seconds to wait for answer to a call
 
 const engine = new StormDB.localFileEngine("./"+redphoneport+"db.stormdb");
 const db = new StormDB(engine);
@@ -58,7 +39,7 @@ var app = express()
   .use(express.static('public'))
   .post('/subscribe', (req, res) => {
     const sc = req.body;
-    console.log("/subscribe received sc ", sc)
+    // console.log("/subscribe received sc ", sc)
 
     // check if subscription already exists
     let allsubs = db.get("subscriptions").value()
@@ -123,12 +104,22 @@ var app = express()
   })
   .get('/', (req,res) => {
     let activecall
-    if(db.get("activecall").value()) {
-      activecall = db.get("activecall").get(0).value()      
+    let currentts = new Date().getTime()
+    if(db.get("activecall").value() && db.get("activecall").get(0).value() && db.get("activecall").get(0).value().timestamp) {
+      if(currentts - db.get("activecall").get(0).value().timestamp < (defaultringcount*3000)) {
+        // console.log("checking timestamp ",currentts, db.get("activecall").get(0).value().timestamp)
+        // 1628477936649
+        activecall = db.get("activecall").get(0).value()          
+      } else {
+        // delete these outdated activecalls please!
+        console.log("removing old activecall")
+        db.get("activecall").get(0).delete(true)
+        db.save()
+      }
     } 
     console.log("/redphone got activecall ", activecall)
     if(activecall && activecall.data) {
-      // console.log("adding activecall cookie", activecall)
+      console.log("adding activecall cookie", activecall)
       res.cookie('data', JSON.stringify(activecall))
       db.get("activecall").get(0).delete(true)
       db.save()
@@ -260,11 +251,11 @@ ws.on('open', function open() {
 
 let rppacket = ""
 ws.on('message', function incoming(message) {
-  console.log('received: %s', message)
+  // console.log('received: %s', message)
   let messagejson = JSON.parse(message)
 
 
-  console.log("message.result: ", messagejson.result)
+  // console.log("message.result: ", messagejson.result)
   let fromPubkey = messagejson.result.fromPubkey
 
   if(messagejson.result.serviceType == 'socket') {
@@ -305,12 +296,12 @@ function savepacket(webrtcdata, fromPubkey) {
     let calltype
     let notificationText
     if(activecall.data.type=="answer"){
-      notificationText = "*answer* from " + fromPubkey
+      notificationText = "*answer* from " + fromPubkey.substring(0,5) + '***'
       calltype="outgoing"
     } else {
       // offer - outgoing call
       calltype="incoming"
-      notificationText = '*ring* ' + fromPubkey + ' is calling!'
+      notificationText = '*ring* ' + fromPubkey.substring(0,5) + '*** is calling!'
     }
     db.get("activecall").push(activecall)  
     db.get("callhistory").push({timestamp: new Date().getTime(), fromPubkey: fromPubkey, type:calltype})
@@ -318,11 +309,18 @@ function savepacket(webrtcdata, fromPubkey) {
 
     const payload = JSON.stringify({ title: 'Red Phone', body: notificationText, icon: './icon.png'})
     // TODO: probably want to loop through all subscriptions
-    let subscription = db.get("subscriptions").get(0).value()
-    // console.log("got subscription from db ", subscription)
-    webpush.sendNotification(subscription, payload).catch(error => {
-      console.error(error.stack)
-    })       
+    if(db.get("subscriptions").value()) {
+      let allsubs = db.get("subscriptions").value()
+      // console.log("allsubs ", allsubs, allsubs.length)
+      for (var i=0;i<allsubs.length;i++) {
+        let subscription = allsubs[i]
+        // console.log("got subscription from db pushing to it", subscription)
+        webpush.sendNotification(subscription, payload).catch(error => {
+          console.error(error.stack)
+        })          
+      }
+    }
+     
 
   } catch (error) {
     console.log("probably some other msg", error)

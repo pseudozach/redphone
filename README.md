@@ -20,6 +20,10 @@
 * Receive notifications when another node is calling you, answer the call.
 * See call history
 
+<p align="center">
+  <img width="460" height="300" src="https://raw.githubusercontent.com/pseudozach/redphone/main/demo.gif">
+</p>
+
 ### How does it work?
 * This app allows you to set up a WebRTC connection between two peers on the internet. 
 * Normally peers would visit the same website and talk to the server over websockets to setup their p2p webrtc connection, or use STUN/TURN servers. 
