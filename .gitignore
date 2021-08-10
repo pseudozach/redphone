@@ -14,5 +14,7 @@ node_modules/
 # Visual Studio Code configuration
 .vscode/
 
+.DS_Store
+
 # redphone db
 *db.stormdb
