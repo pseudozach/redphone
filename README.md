@@ -9,7 +9,7 @@
 * clone the repo  
 ```git clone https://github.com/pseudozach/redphone && cd redphone && npm i```
 * start the app  
-`npm run start -- 8888 8881` (where 8888 is redphone webserver port, 8881 is impervious http/websocket port)
+`npm run start -- 8888 8882` (where 8888 is redphone webserver port, 8882 is impervious http/websocket port)
 * expose the app to public internet  
 `cloudflared tunnel --url http://localhost:8888` (where 8888 is redphone webserver port)
 > 2021-08-05T06:09:08Z INF +------------------------------------------------------------+  
