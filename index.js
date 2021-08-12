@@ -85,7 +85,7 @@ var app = express()
     let pubkey = req.query.pubkey
     let price = req.query.price
     console.log("callstarted ",isInitiator,pubkey,price)
-    if(price > 0) {
+    if(parseInt(price) > 0) {
       if(isInitiator == true || isInitiator == "true") {
         console.log("isInitiator sending regular payments")
         // start sending regular payments or peer will disconnect
