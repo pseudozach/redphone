@@ -93,6 +93,9 @@
       <!-- <h1 style="display: inline; vertical-align: middle;">☎️</h1> -->
       <label for="mypubkey">My Node ID</label>
       <input type="text" name="mypubkey" id="mypubkey" readonly="" style="width: fit-content;" class="centerit"/>
+      <label for="mycallprice">My Call Price</label>
+      <input type="text" name="mycallprice" id="mycallprice" style="width: fit-content;" class="centerit" placeholder="sats/min" />
+      <button class="pure-button" id="setpricebutton" onclick="setprice(); return false;">Set Price</button>
     </form>
 
     <div class="pure-g centertext">
@@ -122,7 +125,9 @@
             <label for="pubkeytocall">Target Node ID</label>
             <input type="text" name="pubkeytocall" id="pubkeytocall" class="pure-input-1" required="" placeholder="02152462827cd693be942184b2863d9d6057ddbe292dfdc5081464263da0354347" />
             <!-- callpubkey('offer'); -->
-            <button class="pure-button button-error centerit" id="callnode" onclick="initializesp(true, null, true); return false;">Call Node</button>
+            <button class="pure-button button-error" id="callnode" onclick="initializesp(true, null, true); return false;">Call Node</button>
+            <button class="pure-button button-secondary" id="getpricebutton" onclick="getprice(); return false;">Check Price</button>
+            <p id="pricetext" style="display: none;"></p>
             <div class="lds-ripple" id="loading" style="display: none;"><div></div><div></div></div>
           </fieldset>
         </form>
@@ -155,6 +160,8 @@
       let isConnected = false
       let p
       let currentstream
+      let targetpubkeyholder
+      let priceholder
 
       async function initializesp (isInitiator, datatosignal, isClicked) {
 
@@ -210,7 +217,11 @@
 
           if(isInitiator && isClicked) {
             console.log("callpubkey with offer")
-            callpubkey("offer")
+            getprice()
+            setTimeout(function(){
+              callpubkey("offer")
+            }, 1000)
+            
           }
           // if(!isInitiator && isClicked) {
           //   console.log("callpubkey with answer")
@@ -240,10 +251,13 @@
           // connect/stop/mute button
           $("#callconnected").show()
 
+          // inform backend to expect regular payments
+          callstarted(isInitiator)
         })
 
         p.on('close', () => {
-          console.log("p closed")
+          // console.log("p closed")
+          callended()
           $("#callconnected").hide()
           $("#nocalls").show()
         })
@@ -286,11 +300,15 @@
           $("#callnode").attr("disabled","")
           $("#loading").show()
           pubkey = document.getElementById('pubkeytocall').value
+          targetpubkeyholder = pubkey
         } else {
           // type==answer / incoming
           $("#answercall").attr("disabled","")
           $("#loadinganswer").show()
           pubkey = document.getElementById('pubkeytoanswer').value
+        }
+        if(pubkey == $("#mypubkey").val()) {
+          alert("cant call own node")
         }
         let senddata = {
             "msg": JSON.stringify(signaldata),
@@ -410,6 +428,81 @@
           })
       }
 
+      function getprice(){
+        let targetpubkey = $("#pubkeytocall").val()
+        fetch('./getprice?nodeid='+targetpubkey, {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          // body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => {
+            console.log("getprice: ", res)
+            return false
+          })
+      }
+
+      function setprice(){
+        let mycallprice = $("#mycallprice").val()
+        fetch('./setprice?price='+mycallprice, {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          // body: JSON.stringify(senddata)
+        }).then(res => res.json())
+          .then(res => {
+            console.log("setprice: ", res)
+            return false
+          })
+      }
+
+      function getmyprice(){
+        fetch('./getmyprice', {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+          // body: JSON.stringify(senddata)
+        }).then(res => res.text())
+          .then(res => {
+            console.log("setprice: ", res)
+            $("#mycallprice").val(res)
+            return false
+          })
+      }
+
+      function callstarted(isInitiator){
+        fetch('./callstarted?isInitiator='+isInitiator+'&pubkey='+targetpubkeyholder+'&price='+priceholder, {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+        }).then(res => res.json())
+          .then(res => {
+            console.log("callstarted: ", res)
+            return false
+          })
+      }
+
+      function callended(){
+        fetch('./callended', {
+          method: 'get',
+          headers: {
+            'Accept': 'application/json, text/plain, */*',
+            'Content-Type': 'application/json'
+          },
+        }).then(res => res.json())
+          .then(res => {
+            console.log("callended: ", res)
+            return false
+          })
+      }
 
       $(function(){
 
@@ -447,6 +540,7 @@
 
         getmynodeid()
         getcallhistory()
+        getmyprice()
 
       })
 
@@ -521,8 +615,9 @@
       // From your client pages:
       const channel = new BroadcastChannel('sw-messages');
       channel.addEventListener('message', event => {
-        console.log('Received', event.data);
-        if(event.data.title=="redphone") {
+        console.log('Received', event.data, event.data.body.includes("Payment NOT received"));
+        if(event.data.title=="redphone" && (event.data.body.includes("ring") || event.data.body.includes("answer"))) {
+          // call related notification received - check active call
           fetch('./activecall', {
             method: 'get',
             headers: {
@@ -560,7 +655,6 @@
               //   p.signal(data.data)
               // }, 3000)
               
-
             } else {
               console.log("type=answer so signal to peer ", data.data)
               p.signal(data.data) 
@@ -568,6 +662,17 @@
               $("#loading").hide()
             }
           })
+        } else if(event.data.title=="redphone" && (event.data.body.includes("Payment NOT received"))) {
+          console.log("Payment NOT received")
+          alert("peer stopped paying, disconnecting call")
+          disconnectCall()
+        } else {
+          // price related notification received
+          // let notificationText = "Price: "+peeraudioprice+" sats/min for "+messagejson.result.fromPubkey
+          priceholder = event.data.body.split(" sats/min for")[0].split("Price: ")[1]
+          console.log("priceholder set ", priceholder)
+          $("#pricetext").text(event.data.body)
+          $("#pricetext").show()
         }
       })
 

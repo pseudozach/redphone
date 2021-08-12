@@ -2,7 +2,7 @@ console.log('Loaded service worker!');
 
 self.addEventListener('push', ev => {
   const data = ev.data.json();
-  console.log('Got push', data);
+  // console.log('Got push', data);
   // console.log('Got ev', ev, ev.clientId);
   self.registration.showNotification(data.title, {
     body: data.body,
@@ -10,7 +10,7 @@ self.addEventListener('push', ev => {
   });
 	
 	const channel = new BroadcastChannel('sw-messages');
-	channel.postMessage({title: 'redphone'});
+	channel.postMessage({title: 'redphone', body: data.body});
 
   // ev.waitUntil(async function() {
   // 	if (!ev.clientId) return;
